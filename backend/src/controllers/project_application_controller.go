@@ -29,6 +29,7 @@ func ApplyProject(c *gin.Context) {
 		projectID,
 		req,
 	)
+
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": err.Error(),
@@ -38,7 +39,6 @@ func ApplyProject(c *gin.Context) {
 
 	c.JSON(http.StatusCreated, res)
 }
-
 //withdraw application
 func WithdrawApplication(c *gin.Context) {
 

@@ -14,16 +14,18 @@ import (
 type ProjectApplicationService struct {
 	applicationRepo *repository.ProjectApplicationRepository
 	projectRepo     *repository.ProjectRepository
+	teamRepo        *repository.TeamRepository
 }
 
 func NewProjectApplicationService() *ProjectApplicationService {
 	return &ProjectApplicationService{
 		applicationRepo: repository.NewProjectApplicationRepository(),
 		projectRepo:     repository.NewProjectRepository(),
+		teamRepo:        repository.NewTeamRepository(),
 	}
 }
-//apply for a project
 
+// Apply for a project
 func (s *ProjectApplicationService) ApplyProject(
 	applicantID string,
 	projectID string,
@@ -35,11 +37,6 @@ func (s *ProjectApplicationService) ApplyProject(
 		return nil, errors.New("invalid project id")
 	}
 
-	applicantUUID, err := uuid.Parse(applicantID)
-	if err != nil {
-		return nil, errors.New("invalid applicant id")
-	}
-
 	project, err := s.projectRepo.FindByUUID(projectUUID)
 	if err != nil {
 		return nil, errors.New("project not found")
@@ -49,20 +46,82 @@ func (s *ProjectApplicationService) ApplyProject(
 		return nil, errors.New("project is not accepting applications")
 	}
 
-	_, err = s.applicationRepo.FindExisting(projectUUID, applicantUUID)
-	if err == nil {
-		return nil, errors.New("you have already applied for this project")
+	application := models.ProjectApplication{
+		ProjectID:       projectUUID,
+		CoverLetter:     req.CoverLetter,
+		ProposedBudget:  req.ProposedBudget,
+		Currency:        req.Currency,
+		EstimatedDuration: req.EstimatedDuration,
+		Status:          models.ApplicationPending,
+		AppliedAt:       time.Now(),
 	}
 
-	application := models.ProjectApplication{
-		ProjectID:         projectUUID,
-		ApplicantID:       applicantUUID,
-		CoverLetter:       req.CoverLetter,
-		ProposedBudget:    req.ProposedBudget,
-		Currency:          req.Currency,
-		EstimatedDuration: req.EstimatedDuration,
-		Status:            models.ApplicationPending,
-		AppliedAt:         time.Now(),
+	// Team application
+	if req.TeamID != "" {
+
+		teamUUID, err := uuid.Parse(req.TeamID)
+		if err != nil {
+			return nil, errors.New("invalid team id")
+		}
+
+		team, err := s.teamRepo.GetByID(teamUUID)
+		if err != nil {
+			return nil, errors.New("team not found")
+		}
+
+		if team.Status != models.TeamActive {
+			return nil, errors.New("team is not active")
+		}
+
+		userUUID, err := uuid.Parse(applicantID)
+		if err != nil {
+			return nil, errors.New("invalid applicant id")
+		}
+
+		// User must be a member of the team
+		isMember := false
+
+		for _, member := range team.Members {
+			if member.UserID == userUUID &&
+				member.Status == models.MemberActive {
+				isMember = true
+				break
+			}
+		}
+
+		if !isMember {
+			return nil, errors.New("you are not an active member of this team")
+		}
+
+		_, err = s.applicationRepo.FindExistingByTeam(
+			projectUUID,
+			teamUUID,
+		)
+
+		if err == nil {
+			return nil, errors.New("this team has already applied for this project")
+		}
+
+		application.TeamID = &teamUUID
+
+	} else {
+
+		// Freelancer / Agency application
+		applicantUUID, err := uuid.Parse(applicantID)
+		if err != nil {
+			return nil, errors.New("invalid applicant id")
+		}
+
+		_, err = s.applicationRepo.FindExisting(
+			projectUUID,
+			applicantUUID,
+		)
+
+		if err == nil {
+			return nil, errors.New("you have already applied for this project")
+		}
+
+		application.ApplicantID = &applicantUUID
 	}
 
 	if err := s.applicationRepo.Create(&application); err != nil {
@@ -74,8 +133,8 @@ func (s *ProjectApplicationService) ApplyProject(
 		ApplicationID: application.ID.String(),
 	}, nil
 }
-//withdraw application
 
+// Withdraw application
 func (s *ProjectApplicationService) WithdrawApplication(
 	applicantID string,
 	applicationID string,
@@ -86,7 +145,31 @@ func (s *ProjectApplicationService) WithdrawApplication(
 		return errors.New("application not found")
 	}
 
-	if application.ApplicantID.String() != applicantID {
+	userUUID, err := uuid.Parse(applicantID)
+	if err != nil {
+		return errors.New("invalid applicant id")
+	}
+
+	authorized := false
+
+	if application.ApplicantID != nil &&
+		*application.ApplicantID == userUUID {
+		authorized = true
+	}
+
+	if !authorized && application.TeamID != nil {
+
+		team, err := s.teamRepo.GetByID(*application.TeamID)
+		if err != nil {
+			return errors.New("team not found")
+		}
+
+		if team.LeaderID == userUUID {
+			authorized = true
+		}
+	}
+
+	if !authorized {
 		return errors.New("unauthorized")
 	}
 
@@ -98,8 +181,8 @@ func (s *ProjectApplicationService) WithdrawApplication(
 
 	return s.applicationRepo.Update(application)
 }
-//accept application
 
+// Accept application
 func (s *ProjectApplicationService) AcceptApplication(
 	applicationID string,
 ) error {
@@ -122,8 +205,7 @@ func (s *ProjectApplicationService) AcceptApplication(
 	return s.applicationRepo.Update(application)
 }
 
-//reject application
-
+// Reject application
 func (s *ProjectApplicationService) RejectApplication(
 	applicationID string,
 ) error {
@@ -145,8 +227,7 @@ func (s *ProjectApplicationService) RejectApplication(
 	return s.applicationRepo.Update(application)
 }
 
-//shortlist application
-
+// Shortlist application
 func (s *ProjectApplicationService) ShortlistApplication(
 	applicationID string,
 ) error {
@@ -167,8 +248,8 @@ func (s *ProjectApplicationService) ShortlistApplication(
 
 	return s.applicationRepo.Update(application)
 }
-//get my applications
 
+// Get my applications
 func (s *ProjectApplicationService) GetMyApplications(
 	applicantID string,
 ) (*dto.ProjectApplicationListResponse, error) {
@@ -196,8 +277,8 @@ func (s *ProjectApplicationService) GetMyApplications(
 
 	return &response, nil
 }
-//get project applications by project id
 
+// Get project applications
 func (s *ProjectApplicationService) GetProjectApplications(
 	projectID string,
 ) (*dto.ProjectApplicationListResponse, error) {
@@ -225,8 +306,8 @@ func (s *ProjectApplicationService) GetProjectApplications(
 
 	return &response, nil
 }
-//helper function to convert ProjectApplication model to ProjectApplicationResponse DTO
 
+// Convert application model to response DTO
 func (s *ProjectApplicationService) convertToApplicationResponse(
 	application *models.ProjectApplication,
 ) dto.ProjectApplicationResponse {
@@ -234,7 +315,6 @@ func (s *ProjectApplicationService) convertToApplicationResponse(
 	response := dto.ProjectApplicationResponse{
 		ID:                application.ID.String(),
 		ProjectID:         application.ProjectID.String(),
-		ApplicantID:       application.ApplicantID.String(),
 		CoverLetter:       application.CoverLetter,
 		ProposedBudget:    application.ProposedBudget,
 		Currency:          application.Currency,
@@ -244,6 +324,14 @@ func (s *ProjectApplicationService) convertToApplicationResponse(
 		AppliedAt:         application.AppliedAt.Format(time.RFC3339),
 		CreatedAt:         application.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:         application.UpdatedAt.Format(time.RFC3339),
+	}
+
+	if application.ApplicantID != nil {
+		response.ApplicantID = application.ApplicantID.String()
+	}
+
+	if application.TeamID != nil {
+		response.TeamID = application.TeamID.String()
 	}
 
 	if application.ReviewedAt != nil {

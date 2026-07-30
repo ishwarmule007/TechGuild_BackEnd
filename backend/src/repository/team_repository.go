@@ -325,3 +325,19 @@ func (r *TeamRepository) FindTeamByMember(
 
 	return members, err
 }
+
+//get the team by Id
+func (r *TeamRepository) GetByID(teamID uuid.UUID) (*models.Team, error) {
+	var team models.Team
+
+	err := postgres.DB.
+		Preload("Members").
+		Where("id = ?", teamID).
+		First(&team).Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &team, nil
+}

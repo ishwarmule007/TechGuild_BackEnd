@@ -20,45 +20,41 @@ const (
 type ProjectApplication struct {
 	ID uuid.UUID `gorm:"type:uuid;primaryKey"`
 
-	// project and applicant relationship
-
+	// Project relationship
 	ProjectID uuid.UUID `gorm:"type:uuid;not null;index"`
-	Project   Project   `gorm:"foreignKey:ProjectID;constraint:OnDelete:CASCADE"`
+	Project   Project `gorm:"foreignKey:ProjectID;constraint:OnDelete:CASCADE"`
 
-	ApplicantID uuid.UUID `gorm:"type:uuid;not null;index"`
-	Applicant   User       `gorm:"foreignKey:ApplicantID;constraint:OnDelete:CASCADE"`
+	// Individual / Agency applicant
+	ApplicantID *uuid.UUID `gorm:"type:uuid;index"`
+	Applicant   *User      `gorm:"foreignKey:ApplicantID;constraint:OnDelete:CASCADE"`
 
-	//proposal details
+	// Team applicant
+	TeamID *uuid.UUID `gorm:"type:uuid;index"`
+	Team   *Team      `gorm:"foreignKey:TeamID;constraint:OnDelete:CASCADE"`
 
-	CoverLetter string `gorm:"type:text;not null"`
-
-	ProposedBudget float64 `gorm:"not null"`
-
-	Currency string `gorm:"size:10;default:'INR'"`
-
+	// Proposal details
+	CoverLetter      string  `gorm:"type:text;not null"`
+	ProposedBudget   float64 `gorm:"not null"`
+	Currency         string  `gorm:"size:10;default:'INR'"`
 	EstimatedDuration string `gorm:"size:100"`
 
-	//project contract relationship
+	// Contract relationship
 	Contract *ProjectContract `gorm:"foreignKey:ApplicationID"`
-	// Application Status
 
+	// Application status
 	Status ApplicationStatus `gorm:"type:varchar(30);default:'pending'"`
 
 	ClientMessage string `gorm:"type:text"`
 
-	// dates of application
-
-	AppliedAt time.Time
-
+	// Dates
+	AppliedAt  time.Time
 	ReviewedAt *time.Time
 
 	CreatedAt time.Time
-
 	UpdatedAt time.Time
 }
 
 func (p *ProjectApplication) BeforeCreate(tx *gorm.DB) error {
-
 	p.ID = uuid.New()
 
 	if p.AppliedAt.IsZero() {

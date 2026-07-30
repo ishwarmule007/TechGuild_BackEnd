@@ -54,12 +54,14 @@ func (s *ContractService) CreateContract(
 	if err != nil {
 		return nil, errors.New("application not found")
 	}
-
+	if application.ApplicantID == nil {
+	return nil, errors.New("team applications are not supported for contracts yet")
+	}
 	contract := models.ProjectContract{
 		ProjectID:      project.ID,
 		ApplicationID:  application.ID,
 		ClientID:       project.ClientID,
-		FreelancerID: application.ApplicantID,
+		FreelancerID: *application.ApplicantID,
 		ContractAmount: req.ContractAmount,
 		Currency:       req.Currency,
 		Status:         models.ContractPending,
